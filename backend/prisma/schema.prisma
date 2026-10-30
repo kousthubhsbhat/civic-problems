@@ -1,0 +1,142 @@
+// ============================================================================
+// SMART CIVIC GOVERNANCE PLATFORM - PRISMA SCHEMA
+// Database: PostgreSQL
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  Citizen
+  Administrator
+  Department_Officer
+}
+
+enum ComplaintStatus {
+  Submitted
+  Under_Review
+  In_Progress
+  Resolved
+  Rejected
+}
+
+enum ComplaintPriority {
+  Low
+  Medium
+  High
+  Critical
+}
+
+model User {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  passwordHash String
+  role         Role               @default(Citizen)
+  departmentId String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  department   Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  complaints   Complaint[]
+  historyLogs  ComplaintHistory[]
+
+  @@map("users")
+}
+
+model Department {
+  id             String       @id @default(uuid())
+  departmentName String       @unique
+  description    String?
+  createdAt      DateTime     @default(now())
+
+  users          User[]
+  complaints     Complaint[]
+
+  @@map("departments")
+}
+
+model Complaint {
+  id                   String             @id @default(uuid())
+  complaintNumber      String             @unique
+  userId               String
+  title                String
+  description          String
+  category             String
+  imageUrl             String?
+  address              String
+  latitude             Float?
+  longitude            Float?
+  aiCategory           String?
+  aiSummary            String?
+  priority             ComplaintPriority  @default(Medium)
+  priorityScore        Float              @default(50.0)
+  priorityExplanation  String?
+  status               ComplaintStatus    @default(Submitted)
+  assignedDepartmentId String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department           Department?        @relation(fields: [assignedDepartmentId], references: [id], onDelete: SetNull)
+  history              ComplaintHistory[]
+  originalDuplicates   ComplaintDuplicate[] @relation("OriginalComplaint")
+  secondaryDuplicates  ComplaintDuplicate[] @relation("DuplicateComplaint")
+
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedDepartmentId])
+  @@index([latitude, longitude])
+  @@map("complaints")
+}
+
+model ComplaintHistory {
+  id             String           @id @default(uuid())
+  complaintId    String
+  previousStatus ComplaintStatus?
+  newStatus      ComplaintStatus
+  remarks        String?
+  updatedBy      String
+  createdAt      DateTime         @default(now())
+
+  complaint      Complaint        @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [updatedBy], references: [id], onDelete: Restrict)
+
+  @@index([complaintId])
+  @@map("complaint_history")
+}
+
+model ComplaintDuplicate {
+  id                   String     @id @default(uuid())
+  originalComplaintId  String
+  duplicateComplaintId String
+  similarityScore      Float
+  explanation          String?
+  createdAt            DateTime   @default(now())
+
+  originalComplaint    Complaint  @relation("OriginalComplaint", fields: [originalComplaintId], references: [id], onDelete: Cascade)
+  duplicateComplaint   Complaint  @relation("DuplicateComplaint", fields: [duplicateComplaintId], references: [id], onDelete: Cascade)
+
+  @@unique([originalComplaintId, duplicateComplaintId])
+  @@map("complaint_duplicates")
+}
+
+model AIInsight {
+  id                  String   @id @default(uuid())
+  insightType         String   // Hotspot, Trend, Cluster, Anomaly
+  title               String
+  description         String
+  location            String?
+  severity            String   @default("Medium") // Low, Medium, High, Critical
+  relatedComplaintIds String[] @default([])
+  createdAt           DateTime @default(now())
+
+  @@map("ai_insights")
+}
